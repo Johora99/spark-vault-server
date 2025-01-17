@@ -56,23 +56,44 @@ async function run() {
     })
 
     // get products data ==========================
-app.get('/product',async (req, res) => {
-  const { sortBy } = req.query;  
+app.get('/product', async (req, res) => {
+  const { sortBy, search, page = 1, limit = 6 } = req.query;
+
+  // Sorting criteria
   let sortCriteria = {};
   if (sortBy === 'timestamp') {
-    sortCriteria = { timestamp: -1 }; 
+    sortCriteria = { timestamp: -1 };
   } else if (sortBy === 'votes') {
-    sortCriteria = { votes: -1 }; 
+    sortCriteria = { votes: -1 };
   } else {
     sortCriteria = { timestamp: -1 };
   }
+
+  // Filtering criteria
+  let filter = {};
+  if (search) {
+    filter = {
+      tags: { $elemMatch: { $regex: search, $options: 'i' } },
+    };
+  }
+
   try {
-    const result = await productsCollection.find().sort(sortCriteria).toArray();
-    res.send(result);
+    const skip = (parseInt(page) - 1) * parseInt(limit); // Calculate skip value
+    const result = await productsCollection
+      .find(filter)
+      .sort(sortCriteria)
+      .skip(skip) // Skip previous pages
+      .limit(parseInt(limit)) // Limit results to page size
+      .toArray();
+
+    const totalProducts = await productsCollection.countDocuments(filter); // Total products
+    res.send({ products: result, totalProducts });
   } catch (error) {
     res.status(500).send({ message: 'Error fetching products', error });
   }
 });
+
+
 
 
   } finally {
