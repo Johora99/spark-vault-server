@@ -57,7 +57,7 @@ async function run() {
 
     // get products data ==========================
 app.get('/product', async (req, res) => {
-  const { sortBy, search, page = 1, limit = 6 } = req.query;
+  const { sortBy, search, page = 1  , limit  } = req.query;
 
   // Sorting criteria
   let sortCriteria = {};
@@ -71,23 +71,26 @@ app.get('/product', async (req, res) => {
 
   // Filtering criteria
   let filter = {};
+  let limitCount = 8;
   if (search) {
     filter = {
       tags: { $elemMatch: { $regex: search, $options: 'i' } },
     };
   }
-
+  if(limit){
+   limitCount = parseInt(limit)
+  }
   try {
     const skip = (parseInt(page) - 1) * parseInt(limit); // Calculate skip value
     const result = await productsCollection
       .find(filter)
       .sort(sortCriteria)
       .skip(skip) // Skip previous pages
-      .limit(parseInt(limit)) // Limit results to page size
+      .limit(limitCount) // Limit results to page size
       .toArray();
 
     const totalProducts = await productsCollection.countDocuments(filter); // Total products
-    res.send({ products: result, totalProducts });
+    res.send({ result, totalProducts });
   } catch (error) {
     res.status(500).send({ message: 'Error fetching products', error });
   }
