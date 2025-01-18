@@ -13,7 +13,7 @@ app.get('/',(req,res)=>{
 })
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.3oeok.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -44,6 +44,7 @@ async function run() {
     // await client.connect();
 
     const productsCollection = client.db('sparkVault').collection('products')
+    const likeCollection = client.db('sparkVault').collection('like')
 
 
 
@@ -95,8 +96,63 @@ app.get('/product', async (req, res) => {
     res.status(500).send({ message: 'Error fetching products', error });
   }
 });
+ 
+//  get one products using id params ==========================
+app.get('/product/byId/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id : new ObjectId(id)};
+  const result = await productsCollection.findOne(query);
+  res.send(result);
+})
 
+  // like by user ====================================
+app.post('/like', async (req, res) => {
+  const newLike = req.body;
+  const userEmail = newLike?.liked_by;
+  const productId = newLike?.productId;
 
+  if (!userEmail || !productId) {
+    return res.status(400).json({ message: 'Invalid request data!' });
+  }
+
+  try {
+    const filter = { liked_by: userEmail, productId: productId };
+    const existingLike = await likeCollection.findOne(filter);
+
+    if (existingLike) {
+      // Dislike the product (remove the like)
+      await likeCollection.deleteOne(filter);
+
+      // Decrement the vote count in the product collection
+      const productFilter = { _id: new ObjectId(productId) };
+      const update = { $inc: { votes: -1 } };
+      const updateResult = await productsCollection.updateOne(productFilter, update);
+
+      if (updateResult.modifiedCount === 0) {
+        return res.status(404).json({ message: 'Product not found!' });
+      }
+
+      return res.status(200).json({ message: 'Disliked successfully!' });
+    } else {
+      // Like the product (add the like)
+      await likeCollection.insertOne(newLike);
+
+      // Increment the vote count in the product collection
+      const productFilter = { _id: new ObjectId(productId) };
+      const update = { $inc: { votes: 1 } };
+      const updateResult = await productsCollection.updateOne(productFilter, update);
+
+      if (updateResult.modifiedCount === 0) {
+        return res.status(404).json({ message: 'Product not found!' });
+      }
+
+      return res.status(201).json({ message: 'Liked successfully!' });
+    }
+  } catch (error) {
+    console.error('Error handling like/dislike:', error);
+    res.status(500).json({ message: 'Internal server error!' });
+  }
+});
 
 
   } finally {
