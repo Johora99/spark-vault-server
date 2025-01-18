@@ -45,6 +45,7 @@ async function run() {
 
     const productsCollection = client.db('sparkVault').collection('products')
     const likeCollection = client.db('sparkVault').collection('like')
+    const reviewCollection = client.db('sparkVault').collection('reviewData')
 
 
 
@@ -105,6 +106,14 @@ app.get('/product/byId/:id',async(req,res)=>{
   res.send(result);
 })
 
+// get review data ==========================
+app.get('/review/byId/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {productId : id};
+  const result = await reviewCollection.find(query).toArray();
+  res.send(result);
+})
+
   // like by user ====================================
 app.post('/like', async (req, res) => {
   const newLike = req.body;
@@ -129,10 +138,10 @@ app.post('/like', async (req, res) => {
       const updateResult = await productsCollection.updateOne(productFilter, update);
 
       if (updateResult.modifiedCount === 0) {
-        return res.status(404).json({ message: 'Product not found!' });
+        return res.status(404).send({ message: 'Product not found!' });
       }
 
-      return res.status(200).json({ message: 'Disliked successfully!' });
+      return res.status(200).send({ message: 'Disliked successfully!' });
     } else {
       // Like the product (add the like)
       await likeCollection.insertOne(newLike);
@@ -143,15 +152,34 @@ app.post('/like', async (req, res) => {
       const updateResult = await productsCollection.updateOne(productFilter, update);
 
       if (updateResult.modifiedCount === 0) {
-        return res.status(404).json({ message: 'Product not found!' });
+        return res.status(404).send({ message: 'Product not found!' });
       }
 
-      return res.status(201).json({ message: 'Liked successfully!' });
+      return res.status(201).send({ message: 'Liked successfully!' });
     }
   } catch (error) {
     console.error('Error handling like/dislike:', error);
-    res.status(500).json({ message: 'Internal server error!' });
+    res.status(500).send({ message: 'Internal server error!' });
   }
+});
+
+// review post ===============================
+app.post('/review', async (req, res) => {
+
+    const newReview = req.body;
+    const email = newReview.email;
+    const productId = newReview.productId;
+    const query = { email: email, productId: productId };
+
+    const isExist = await reviewCollection.findOne(query);
+    if (isExist) {
+      return res.status(409).send({ message: "You have already submitted a review for this product!" });
+    }
+
+    const result = await reviewCollection.insertOne(newReview);
+    res.status(201).send({ message: "Review submitted successfully!", result });
+    res.send(result);
+    
 });
 
 
