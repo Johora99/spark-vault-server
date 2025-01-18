@@ -46,6 +46,7 @@ async function run() {
     const productsCollection = client.db('sparkVault').collection('products')
     const likeCollection = client.db('sparkVault').collection('like')
     const reviewCollection = client.db('sparkVault').collection('reviewData')
+    const userCollection = client.db('sparkVault').collection('user')
 
 
 
@@ -113,7 +114,17 @@ app.get('/review/byId/:id',async(req,res)=>{
   const result = await reviewCollection.find(query).toArray();
   res.send(result);
 })
-
+// get all user =============================
+app.get('/user',async(req,res)=>{
+  const result = await userCollection.find().toArray();
+  res.send(result)
+})
+app.get('/user/byEmail/:email',async(req,res)=>{
+  const email = req.params.email;
+  const query = {email : email}
+  const result = await userCollection.findOne(query);
+  res.send(result)
+})
   // like by user ====================================
 app.post('/like', async (req, res) => {
   const newLike = req.body;
@@ -181,8 +192,21 @@ app.post('/review', async (req, res) => {
     res.send(result);
     
 });
-
-
+  
+// user ===============
+app.post('/user',async(req,res)=>{
+  const user = req.body;
+  const email = user.email;
+  const query = {email : email};
+  const isExist = await userCollection.findOne(query);
+  if(isExist){
+    return res.send({message : 'user already exist', insertedId: null});
+  }else{
+    const result = await userCollection.insertOne(user);
+    res.send(result)
+  }
+})
+  
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
