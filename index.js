@@ -259,6 +259,24 @@ app.put('/product/:id', async (req, res) => {
   res.send(result)
   
 });
+// make moderator ==========================
+app.patch('/user/moderator/:email',async(req,res)=>{
+  const email = req.params.email;
+  const query = {email : email};
+  
+  const {role} = req.body;
+  const user = await userCollection.findOne(query);
+  if(user?.role !== 'user'){
+    return
+  }
+  const update = {
+    $set : {
+      role,
+    }
+  }
+  const result = await userCollection.updateOne(query,update)
+  res.send(result)
+})
 
   } finally {
     // Ensures that the client will close when you finish/error
