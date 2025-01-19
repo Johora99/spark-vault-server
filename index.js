@@ -126,7 +126,7 @@ app.get('/user/byEmail/:email',async(req,res)=>{
   res.send(result)
 })
 // get user added product ==========================
-app.get('/product/:email',async(req,res)=>{
+app.get('/product/byEmail/:email',async(req,res)=>{
   const email = req.params.email;
   const query = {owner_email : email};
   const result = await productsCollection.find(query).toArray();
@@ -226,6 +226,40 @@ app.post('/user',async(req,res)=>{
   }
 })
   
+// delete product ==========================
+app.delete('/product/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id : new ObjectId(id)}
+  const result = await productsCollection.deleteOne(query);
+  res.send(result)
+})
+// update product data ==========================
+app.put('/product/:id', async (req, res) => {
+  const id = req.params.id;
+  const data = req.body;
+  const query = { _id: new ObjectId(id) };
+  const update = {
+    $set: {
+      owner_name: data.owner_name,
+      owner_email: data.owner_email,
+      owner_image: data.owner_image,
+      product_name: data.product_name,
+      product_image: data.product_image,
+      web_link: data.web_link,
+      description: data.description,
+      tags: data.tags || [], 
+      timestamp: new Date(), 
+      votes: data.votes || 0,
+      reportCount: data.reportCount || 0,
+      status: data.status || "pending",
+    },
+  };
+
+    const result = await productsCollection.updateOne(query, update);
+  res.send(result)
+  
+});
+
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
