@@ -59,9 +59,9 @@ async function run() {
     })
 
     // get products data ==========================
-app.get('/product', async (req, res) => {
+app.get('/product/:status', async (req, res) => {
   const { sortBy, search, page = 1  , limit  } = req.query;
-
+  const status = req.params.status;
   // Sorting criteria
   let sortCriteria = {};
   if (sortBy === 'timestamp') {
@@ -125,6 +125,25 @@ app.get('/user/byEmail/:email',async(req,res)=>{
   const result = await userCollection.findOne(query);
   res.send(result)
 })
+// get user added product ==========================
+app.get('/product/:email',async(req,res)=>{
+  const email = req.params.email;
+  const query = {owner_email : email};
+  const result = await productsCollection.find(query).toArray();
+  res.send(result);
+})
+// post product =======================
+app.post('/product', async (req, res) => {
+  const newProduct = req.body;
+
+  // Add the default status of 'pending'
+  newProduct.status = 'pending';
+    
+  const result = await productsCollection.insertOne(newProduct);
+  res.send(result);
+  
+});
+
   // like by user ====================================
 app.post('/like', async (req, res) => {
   const newLike = req.body;
