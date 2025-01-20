@@ -57,23 +57,51 @@ async function run() {
       res.send({token})
 
     })
+// get all products ========================
+app.get('/product', async (req, res) => {
+  try {
+    // Fetch and sort directly with MongoDB query
+    const result = await productsCollection
+      .find()
+      .sort({ status: 1 }) // MongoDB will sort "pending" first if "status" is alphabetically ordered
+      .toArray();
+
+    // Optionally, ensure additional manual sorting logic if necessary (but likely redundant)
+    const sortedResult = result.sort((a, b) => {
+      if (a.status === "pending" && b.status !== "pending") return -1;
+      if (a.status !== "pending" && b.status === "pending") return 1;
+      return 0; // Keep relative order for other statuses
+    });
+
+    res.send(sortedResult);
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).send({ message: "Failed to fetch products." });
+  }
+});
+
 
     // get products data ==========================
 app.get('/product/:status', async (req, res) => {
-  const { sortBy, search, page = 1  , limit  } = req.query;
-  const status = req.params.status;
+  const { sortBy,featured, search, page = 1  , limit  } = req.query;
+  const {status} = req.params;
+  console.log(status)
   // Sorting criteria
   let sortCriteria = {};
   if (sortBy === 'timestamp') {
     sortCriteria = { timestamp: -1 };
-  } else if (sortBy === 'votes') {
+  } else if ( sortBy === 'votes') {
     sortCriteria = { votes: -1 };
   } else {
     sortCriteria = { timestamp: -1 };
   }
 
   // Filtering criteria
-  let filter = {};
+  let filter = { status };
+
+  if (featured === "true") {
+  filter.featured = true; // Only include featured products
+  }
   let limitCount = 8;
   if (search) {
     filter = {
@@ -98,7 +126,8 @@ app.get('/product/:status', async (req, res) => {
     res.status(500).send({ message: 'Error fetching products', error });
   }
 });
- 
+
+
 //  get one products using id params ==========================
 app.get('/product/byId/:id',async(req,res)=>{
   const id = req.params.id;
@@ -138,6 +167,7 @@ app.post('/product', async (req, res) => {
 
   // Add the default status of 'pending'
   newProduct.status = 'pending';
+  newProduct.featured = false;
     
   const result = await productsCollection.insertOne(newProduct);
   res.send(result);
@@ -252,6 +282,7 @@ app.put('/product/:id', async (req, res) => {
       votes: data.votes || 0,
       reportCount: data.reportCount || 0,
       status: data.status || "pending",
+      featured : data.featured || false,
     },
   };
 
@@ -277,7 +308,74 @@ app.patch('/user/moderator/:email',async(req,res)=>{
   const result = await userCollection.updateOne(query,update)
   res.send(result)
 })
+// make admin ==========================
+app.patch('/user/admin/:email',async(req,res)=>{
+  const email = req.params.email;
+  const query = {email : email};
+  
+  const {role} = req.body;
+  const user = await userCollection.findOne(query);
+  if(user?.role === 'admin'){
+    return
+  }
+  const update = {
+    $set : {
+      role,
+    }
+  }
+  const result = await userCollection.updateOne(query,update)
+  res.send(result)
+})
+// make product featured ========================
+app.patch('/product/featured/:id', async (req, res) => {
+  const id = req.params.id;
 
+  const query = { _id: new ObjectId(id) };
+  const { featured } = req.body;
+
+  const product = await productsCollection.findOne(query);
+
+  if (product?.featured) {
+      return res.status(400).send({ message: "This product is already featured." });
+    }
+
+
+    const update = {
+      $set: {
+        featured,
+        status: "Accepted",
+      },
+    };
+
+    const result = await productsCollection.updateOne(query, update);
+    res.send(result);
+  
+});
+
+// make product accepted =========================
+app.patch('/product/status/:id', async (req, res) => {
+  const id = req.params.id;
+
+  const query = { _id: new ObjectId(id) };
+  const { status } = req.body;
+
+  const product = await productsCollection.findOne(query);
+
+  if (product?.status === 'Accepted') {
+      return res.status(400).send({ message: "This product is already Accepted ." });
+    }
+
+
+    const update = {
+      $set: {
+        status,
+      },
+    };
+
+    const result = await productsCollection.updateOne(query, update);
+    res.send(result);
+  
+});
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
