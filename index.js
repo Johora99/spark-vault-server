@@ -47,9 +47,31 @@ async function run() {
     const likeCollection = client.db('sparkVault').collection('like')
     const reviewCollection = client.db('sparkVault').collection('reviewData')
     const userCollection = client.db('sparkVault').collection('user')
+    const reportCollection = client.db('sparkVault').collection('report')
 
+// middle ware for verify admin =================================
+    const verifyAdmin = async (req,res,next)=>{
+    const email = req.decoded.email;
+    const query = {email :email };
+    const user = await userCollection.findOne(query);
+    const isAdmin = user?.role === 'admin';
+    if(!isAdmin){
+      return res.status(403).send({message : 'forbidden access'})
+      }
+      next();
+  }
 
-
+  // middle ware for moderator ========================
+  const verifyModerator = async (req,res,next)=>{
+    const email = req.decoded.email;
+    const query = {email :email };
+    const user = await userCollection.findOne(query);
+    const isModerator = user?.role === 'moderator';
+    if(!isModerator){
+      return res.status(403).send({message : 'forbidden access'})
+      }
+      next();
+  }
        // jwt token generate ===============================
     app.post('/jwt',async(req,res)=>{
       const user = req.body;
@@ -57,6 +79,44 @@ async function run() {
       res.send({token})
 
     })
+
+    // get statistic pi =====================
+app.get('/admin/statistics', async (req, res) => {
+  try {
+    const productStats = await productsCollection.aggregate([
+      {
+        $group: {
+          _id: "$status", 
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    const totalReviews = await reviewCollection.countDocuments();
+    const totalUsers = await userCollection.countDocuments();
+    const data = {
+      products: productStats.reduce((acc, item) => {
+        acc[item._id] = item.count; 
+        return acc;
+      }, {}),
+      reviews: totalReviews,
+      users: totalUsers
+    };
+
+    res.status(200).json({
+      success: true,
+      data: data
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while fetching statistics.',
+      error: error.message
+    });
+  }
+});
+
 // get all products ========================
 app.get('/product', async (req, res) => {
   try {
@@ -80,6 +140,16 @@ app.get('/product', async (req, res) => {
   }
 });
 
+// get reported data ========================
+app.get('/product/report', async (req, res) => {
+  
+    // Fetch all products where reportCount is greater than 0
+  const result = await productsCollection
+    .find({ reportCount: { $gt: 0 } }) // Filter products with reportCount > 0
+    .toArray();
+    res.send(result)
+  
+});
 
     // get products data ==========================
 app.get('/product/:status', async (req, res) => {
@@ -219,6 +289,55 @@ app.post('/like', async (req, res) => {
     }
   } catch (error) {
     console.error('Error handling like/dislike:', error);
+    res.status(500).send({ message: 'Internal server error!' });
+  }
+});
+
+// report by user ====================================
+app.post('/report', async (req, res) => {
+  const newReport = req.body;
+  const userEmail = newReport?.report_by;
+  const productId = newReport?.productId;
+
+  if (!userEmail || !productId) {
+    return res.status(400).json({ message: 'Invalid request data!' });
+  }
+
+  try {
+    const filter = { report_by: userEmail, productId: productId };
+    const existingReport = await reportCollection.findOne(filter);
+
+    if (existingReport) {
+      // Dislike the product (remove the like)
+      await reportCollection.deleteOne(filter);
+
+      // Decrement the vote count in the product collection
+      const productFilter = { _id: new ObjectId(productId) };
+      const update = { $inc: { reportCount: -1 } };
+      const updateResult = await productsCollection.updateOne(productFilter, update);
+
+      if (updateResult.modifiedCount === 0) {
+        return res.status(404).send({ message: 'Product not found!' });
+      }
+
+      return res.status(200).send({ message: 'Report is Removed Successfully!' });
+    } else {
+      // Like the product (add the like)
+      await reportCollection.insertOne(newReport);
+
+      // Increment the vote count in the product collection
+      const productFilter = { _id: new ObjectId(productId) };
+      const update = { $inc: { reportCount: 1 } };
+      const updateResult = await productsCollection.updateOne(productFilter, update);
+
+      if (updateResult.modifiedCount === 0) {
+        return res.status(404).send({ message: 'Product not found!' });
+      }
+
+      return res.status(201).send({ message: 'Thank you! Your report has been successfully submitted.'});
+    }
+  } catch (error) {
+    console.error('Error handling report:', error);
     res.status(500).send({ message: 'Internal server error!' });
   }
 });
@@ -376,6 +495,13 @@ app.patch('/product/status/:id', async (req, res) => {
     res.send(result);
   
 });
+// delete reported product ==========================
+app.delete('/reportedProduct/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id : new ObjectId(id)};
+  const result = await productsCollection.deleteOne(query);
+  res.send(result)
+})
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
