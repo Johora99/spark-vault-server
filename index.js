@@ -48,6 +48,7 @@ async function run() {
     const reviewCollection = client.db('sparkVault').collection('reviewData')
     const userCollection = client.db('sparkVault').collection('user')
     const reportCollection = client.db('sparkVault').collection('report')
+    const couponCollection = client.db('sparkVault').collection('coupon')
 
 // middle ware for verify admin =================================
     const verifyAdmin = async (req,res,next)=>{
@@ -79,7 +80,11 @@ async function run() {
       res.send({token})
 
     })
-
+// get coupon ========================
+app.get('/coupon',async(req,res)=>{
+  const result = await couponCollection.find().toArray();
+  res.send(result)
+})
     // get statistic pi =====================
 app.get('/admin/statistics', async (req, res) => {
   try {
