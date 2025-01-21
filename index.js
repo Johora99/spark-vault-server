@@ -379,7 +379,12 @@ app.post('/user',async(req,res)=>{
     res.send(result)
   }
 })
-  
+//  post coupon by admin ====================
+app.post('/coupon',async(req,res)=>{
+  const newCoupon = req.body;
+  const result = await couponCollection.insertOne(newCoupon);
+  res.send(result);
+})
 // delete product ==========================
 app.delete('/product/:id',async(req,res)=>{
   const id = req.params.id;
@@ -414,6 +419,22 @@ app.put('/product/:id', async (req, res) => {
   res.send(result)
   
 });
+// update coupon by admin =======================
+app.put('/coupon/:id',async(req,res)=>{
+  const id = req.params.id;
+  const data = req.body;
+  const query = {_id : new ObjectId(id)};
+  const update = {
+    $set : {
+      couponCode: data.couponCode,
+      expiryDate: data.expiryDate,
+      description: data.description,
+      discountAmount : data.discountAmount
+    }
+  }
+  const result = await couponCollection.updateOne(query,update);
+  res.send(result)
+})
 // make moderator ==========================
 app.patch('/user/moderator/:email',async(req,res)=>{
   const email = req.params.email;
@@ -506,6 +527,13 @@ app.delete('/reportedProduct/:id',async(req,res)=>{
   const query = {_id : new ObjectId(id)};
   const result = await productsCollection.deleteOne(query);
   res.send(result)
+})
+// delete coupon by admin =====================
+app.delete('/coupon/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id : new ObjectId(id)};
+  const result = await couponCollection.deleteOne(query);
+  res.send(result);
 })
   } finally {
     // Ensures that the client will close when you finish/error
