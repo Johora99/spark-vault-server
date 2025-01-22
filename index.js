@@ -3,6 +3,7 @@ const app = express();
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const stripe = require('stripe')(process.env.SECRET_PAYMENT_KEY);
 const port = process.env.PORT || 5000;
 
 app.use(cors());
@@ -80,13 +81,18 @@ async function run() {
       res.send({token})
 
     })
+
+
+
 // get coupon ========================
 app.get('/coupon',async(req,res)=>{
   const result = await couponCollection.find().toArray();
   res.send(result)
 })
+
+
     // get statistic pi =====================
-app.get('/admin/statistics', async (req, res) => {
+app.get('/admin/statistics',verifyToken,verifyAdmin, async (req, res) => {
   try {
     const productStats = await productsCollection.aggregate([
       {
@@ -122,20 +128,19 @@ app.get('/admin/statistics', async (req, res) => {
   }
 });
 
+
 // get all products ========================
-app.get('/product', async (req, res) => {
+app.get('/product',verifyToken,verifyModerator, async (req, res) => {
   try {
-    // Fetch and sort directly with MongoDB query
+
     const result = await productsCollection
       .find()
-      .sort({ status: 1 }) // MongoDB will sort "pending" first if "status" is alphabetically ordered
+      .sort({ status: 1 }) 
       .toArray();
-
-    // Optionally, ensure additional manual sorting logic if necessary (but likely redundant)
     const sortedResult = result.sort((a, b) => {
       if (a.status === "pending" && b.status !== "pending") return -1;
       if (a.status !== "pending" && b.status === "pending") return 1;
-      return 0; // Keep relative order for other statuses
+      return 0; 
     });
 
     res.send(sortedResult);
@@ -146,7 +151,7 @@ app.get('/product', async (req, res) => {
 });
 
 // get reported data ========================
-app.get('/product/report', async (req, res) => {
+app.get('/product/report',verifyToken,verifyModerator, async (req, res) => {
   
     // Fetch all products where reportCount is greater than 0
   const result = await productsCollection
@@ -204,7 +209,7 @@ app.get('/product/:status', async (req, res) => {
 
 
 //  get one products using id params ==========================
-app.get('/product/byId/:id',async(req,res)=>{
+app.get('/product/byId/:id',verifyToken,async(req,res)=>{
   const id = req.params.id;
   const query = {_id : new ObjectId(id)};
   const result = await productsCollection.findOne(query);
@@ -212,53 +217,83 @@ app.get('/product/byId/:id',async(req,res)=>{
 })
 
 // get review data ==========================
-app.get('/review/byId/:id',async(req,res)=>{
+app.get('/review/byId/:id',verifyToken,async(req,res)=>{
   const id = req.params.id;
   const query = {productId : id};
   const result = await reviewCollection.find(query).toArray();
   res.send(result);
 })
 // get all user =============================
-app.get('/user',async(req,res)=>{
+app.get('/user',verifyToken,verifyAdmin,async(req,res)=>{
   const result = await userCollection.find().toArray();
   res.send(result)
 })
-app.get('/user/byEmail/:email',async(req,res)=>{
+
+
+app.get('/user/byEmail/:email',verifyToken,async(req,res)=>{
   const email = req.params.email;
+  const decoded_email = req.decoded.email;
+  if(email !== decoded_email){
+    return res.status(403).send({message : 'forbidden access'})
+  }
   const query = {email : email}
   const result = await userCollection.findOne(query);
   res.send(result)
 })
 // get user added product ==========================
-app.get('/product/byEmail/:email',async(req,res)=>{
+app.get('/product/byEmail/:email',verifyToken,async(req,res)=>{
   const email = req.params.email;
+  const decoded_email = req.decoded.email;
+  if(email !== decoded_email){
+      return res.status(403).send({message : 'forbidden access'})
+    }
   const query = {owner_email : email};
   const result = await productsCollection.find(query).toArray();
   res.send(result);
 })
 // post product =======================
-app.post('/product', async (req, res) => {
+app.post('/product', verifyToken,async (req, res) => {
   const newProduct = req.body;
-
+  const email = newProduct.owner_email;
+  const query = {email : email}
   // Add the default status of 'pending'
   newProduct.status = 'pending';
   newProduct.featured = false;
     
+    const user = await userCollection.findOne(query);
+    if(user.productAddLimit === 0){
+      return res
+        .status(200)
+        .send({ message: 'You have reached your product addition limit.' });
+    }
+   if(user.productAddLimit === 1 ||user.
+Status === 'verified' || user.productAddLimit === 'unlimited' || role === 'admin' || role === 'moderator'){
+
   const result = await productsCollection.insertOne(newProduct);
+    if (user.productAddLimit === 1) {
+        await userCollection.updateOne(
+          { email: email },
+          { $set: { productAddLimit: 0 } }
+        );
+      }
   res.send(result);
+}
   
 });
 
   // like by user ====================================
-app.post('/like', async (req, res) => {
+app.post('/like', verifyToken, async (req, res) => {
   const newLike = req.body;
   const userEmail = newLike?.liked_by;
   const productId = newLike?.productId;
-
+  const productFilter = { _id: new ObjectId(productId) };
   if (!userEmail || !productId) {
     return res.status(400).json({ message: 'Invalid request data!' });
   }
-
+  const filterProduct = await productsCollection.findOne(productFilter);
+  if(userEmail === filterProduct?.owner_email ){
+    return res.status(404).send({message : "You can't give like on your own product"})
+  }
   try {
     const filter = { liked_by: userEmail, productId: productId };
     const existingLike = await likeCollection.findOne(filter);
@@ -268,7 +303,7 @@ app.post('/like', async (req, res) => {
       await likeCollection.deleteOne(filter);
 
       // Decrement the vote count in the product collection
-      const productFilter = { _id: new ObjectId(productId) };
+      
       const update = { $inc: { votes: -1 } };
       const updateResult = await productsCollection.updateOne(productFilter, update);
 
@@ -299,15 +334,18 @@ app.post('/like', async (req, res) => {
 });
 
 // report by user ====================================
-app.post('/report', async (req, res) => {
+app.post('/report', verifyToken, async (req, res) => {
   const newReport = req.body;
   const userEmail = newReport?.report_by;
   const productId = newReport?.productId;
-
+  const productFilter = { _id: new ObjectId(productId) };
   if (!userEmail || !productId) {
     return res.status(400).json({ message: 'Invalid request data!' });
   }
-
+   const filterProduct = await productsCollection.findOne(productFilter);
+  if(userEmail === filterProduct?.owner_email ){
+    return res.status(404).send({message : "You can't give report on your own product"})
+  }
   try {
     const filter = { report_by: userEmail, productId: productId };
     const existingReport = await reportCollection.findOne(filter);
@@ -317,7 +355,7 @@ app.post('/report', async (req, res) => {
       await reportCollection.deleteOne(filter);
 
       // Decrement the vote count in the product collection
-      const productFilter = { _id: new ObjectId(productId) };
+      
       const update = { $inc: { reportCount: -1 } };
       const updateResult = await productsCollection.updateOne(productFilter, update);
 
@@ -348,13 +386,18 @@ app.post('/report', async (req, res) => {
 });
 
 // review post ===============================
-app.post('/review', async (req, res) => {
+app.post('/review', verifyToken, async (req, res) => {
 
     const newReview = req.body;
     const email = newReview.email;
     const productId = newReview.productId;
+    const productFilter = { _id: new ObjectId(productId) };
+      const filterProduct = await productsCollection.findOne(productFilter);
+  if(email === filterProduct?.owner_email ){
+    return res.status(404).send({message : "You can't give review on your own product"})
+  }
     const query = { email: email, productId: productId };
-
+ 
     const isExist = await reviewCollection.findOne(query);
     if (isExist) {
       return res.status(409).send({ message: "You have already submitted a review for this product!" });
@@ -375,25 +418,26 @@ app.post('/user',async(req,res)=>{
   if(isExist){
     return res.send({message : 'user already exist', insertedId: null});
   }else{
+    user.productAddLimit = 1;
     const result = await userCollection.insertOne(user);
     res.send(result)
   }
 })
 //  post coupon by admin ====================
-app.post('/coupon',async(req,res)=>{
+app.post('/coupon',verifyToken,verifyAdmin,async(req,res)=>{
   const newCoupon = req.body;
   const result = await couponCollection.insertOne(newCoupon);
   res.send(result);
 })
 // delete product ==========================
-app.delete('/product/:id',async(req,res)=>{
+app.delete('/product/:id',verifyToken,async(req,res)=>{
   const id = req.params.id;
   const query = {_id : new ObjectId(id)}
   const result = await productsCollection.deleteOne(query);
   res.send(result)
 })
 // update product data ==========================
-app.put('/product/:id', async (req, res) => {
+app.put('/product/:id',verifyToken, async (req, res) => {
   const id = req.params.id;
   const data = req.body;
   const query = { _id: new ObjectId(id) };
@@ -420,7 +464,7 @@ app.put('/product/:id', async (req, res) => {
   
 });
 // update coupon by admin =======================
-app.put('/coupon/:id',async(req,res)=>{
+app.put('/coupon/:id',verifyToken,verifyAdmin,async(req,res)=>{
   const id = req.params.id;
   const data = req.body;
   const query = {_id : new ObjectId(id)};
@@ -436,7 +480,7 @@ app.put('/coupon/:id',async(req,res)=>{
   res.send(result)
 })
 // make moderator ==========================
-app.patch('/user/moderator/:email',async(req,res)=>{
+app.patch('/user/moderator/:email',verifyToken,verifyAdmin,async(req,res)=>{
   const email = req.params.email;
   const query = {email : email};
   
@@ -454,7 +498,7 @@ app.patch('/user/moderator/:email',async(req,res)=>{
   res.send(result)
 })
 // make admin ==========================
-app.patch('/user/admin/:email',async(req,res)=>{
+app.patch('/user/admin/:email',verifyToken,verifyAdmin,async(req,res)=>{
   const email = req.params.email;
   const query = {email : email};
   
@@ -472,7 +516,7 @@ app.patch('/user/admin/:email',async(req,res)=>{
   res.send(result)
 })
 // make product featured ========================
-app.patch('/product/featured/:id', async (req, res) => {
+app.patch('/product/featured/:id', verifyToken,verifyModerator, async (req, res) => {
   const id = req.params.id;
 
   const query = { _id: new ObjectId(id) };
@@ -498,7 +542,7 @@ app.patch('/product/featured/:id', async (req, res) => {
 });
 
 // make product accepted =========================
-app.patch('/product/status/:id', async (req, res) => {
+app.patch('/product/status/:id',verifyToken,verifyModerator, async (req, res) => {
   const id = req.params.id;
 
   const query = { _id: new ObjectId(id) };
@@ -522,19 +566,47 @@ app.patch('/product/status/:id', async (req, res) => {
   
 });
 // delete reported product ==========================
-app.delete('/reportedProduct/:id',async(req,res)=>{
+app.delete('/reportedProduct/:id',verifyToken,verifyModerator,async(req,res)=>{
   const id = req.params.id;
   const query = {_id : new ObjectId(id)};
   const result = await productsCollection.deleteOne(query);
   res.send(result)
 })
 // delete coupon by admin =====================
-app.delete('/coupon/:id',async(req,res)=>{
+app.delete('/coupon/:id',verifyToken,verifyAdmin,async(req,res)=>{
   const id = req.params.id;
   const query = {_id : new ObjectId(id)};
   const result = await couponCollection.deleteOne(query);
   res.send(result);
 })
+app.patch('/userStatus/:email',verifyToken,async(req,res)=>{
+  const {status} = req.body;
+  const email = req.params.email;
+  const query = {email : email};
+  const update = {
+    $set : {
+      status,
+    }
+  }
+  const result = await userCollection.updateOne(query,update);
+  res.send(result)
+})
+  // payment Intent ============================
+    app.post('/create-checkout-session',async(req,res)=>{
+      const {price} = req.body;
+      if (!price || isNaN(price) || price <= 0) {
+      return res.status(400).send({ error: "Invalid price value" });
+      }
+      const amount = parseInt(price * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount : amount,
+        currency : 'usd',
+        payment_method_types : ['card']
+      });
+      res.send({
+        clientSecret : paymentIntent.client_secret
+      })
+    })
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
