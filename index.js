@@ -33,7 +33,7 @@ const client = new MongoClient(uri, {
     const token = req.headers.authorization.split(' ')[1];
     jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,(err,decoded)=>{
          if(err){
-          return res.status(401).send({message : 'unauthorize access'})
+          return res.status(403).send({message : 'forbidden access'})
          }
          req.decoded = decoded;
          next();
@@ -82,8 +82,30 @@ async function run() {
 
     })
 
-
-
+  // get user base on email ===========================
+    app.get('/user/admin/:email',async(req,res)=>{
+      const email = req.params.email;
+      const query = {email : email}
+      const user = await userCollection.findOne(query);
+      let admin = false;
+      if(user){
+        admin = user?.role === 'admin'
+      }
+        
+      res.send({admin})
+    })
+        // get moderator email ===========================
+    app.get('/user/moderator/:email',async(req,res)=>{
+      const email = req.params.email;
+      const query = {email : email}
+      const user = await userCollection.findOne(query);
+      let moderator = false;
+      if(user){
+        moderator = user?.role === 'moderator'
+      }
+        
+      res.send({moderator})
+    })
 // get coupon ========================
 app.get('/coupon',async(req,res)=>{
   const result = await couponCollection.find().toArray();
@@ -261,13 +283,13 @@ app.post('/product', verifyToken,async (req, res) => {
   newProduct.featured = false;
     
     const user = await userCollection.findOne(query);
-    if(user.productAddLimit === 0){
+    if(user.productAddLimit === 0 && user.status === 'unverified'){
       return res
         .status(200)
         .send({ message: 'You have reached your product addition limit.' });
     }
-   if(user.productAddLimit === 1 ||user.
-Status === 'verified' || user.productAddLimit === 'unlimited' || role === 'admin' || role === 'moderator'){
+   if(user.productAddLimit === 1 || user.
+status === 'verified' || user.role === 'admin' || user.role === 'moderator'){
 
   const result = await productsCollection.insertOne(newProduct);
     if (user.productAddLimit === 1) {
