@@ -1,4 +1,4 @@
-# SparkVault Backend
+# SparkVault
 
 The **SparkVault** backend is built using Node.js and Express, providing the core API services for managing products, users, and interactions on the platform. It connects to a MongoDB database for data storage and is designed to handle scalable operations efficiently.
 
