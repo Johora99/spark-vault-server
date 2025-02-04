@@ -29,8 +29,8 @@ Follow these steps to set up the backend locally:
 
 1. Clone the repository:
    ```bash
-   git clone <backend-repo-url>
-   cd <backend-folder>
+   git clone https://github.com/Johora99/spark-vault-server.git
+   cd Spark-Valut
    ```
 
 2. Install dependencies:
@@ -40,7 +40,7 @@ Follow these steps to set up the backend locally:
 
 3. Start the server:
    ```bash
-   npm start
+   nodemon index.js
    ```
 
 The backend server will be available at `http://localhost:5000`.
